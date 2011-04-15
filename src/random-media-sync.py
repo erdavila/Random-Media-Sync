@@ -104,12 +104,24 @@ def fmt_bytesize(value):
     return '%d (%s)' % (original_value, alts[-1])
 
 
-def delete(base, item_path):
-    path = os.path.join(base, item_path)
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+def delete(base_path, item_relpath):
+    full_path = os.path.join(base_path, item_relpath)
+    if os.path.isdir(full_path):
+        shutil.rmtree(full_path)
     else:
-        os.remove(path)
+        os.remove(full_path)
+    
+    # Delete  empty directories
+    while '/' in item_relpath:
+        (item_relpath, _) = os.path.split(item_relpath)
+        full_path = os.path.join(base_path, item_relpath)
+        
+        if len(os.listdir(full_path)) == 0:
+            debug('Deleting empty dir:', item_relpath)
+            os.rmdir(full_path)
+        else:
+            # Not empty
+            break
 
 
 def copy(src_dir, dst_dir, item_path):

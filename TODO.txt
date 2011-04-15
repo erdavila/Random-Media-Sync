@@ -4,6 +4,6 @@
 
 - Show estimated time while copying.
 
-- "forced-album": Directories in the artist-level that must be considered as albums.
+- "--forced-album": Directories in the artist-level that must be considered as albums.
 
-- "forced-non-album": Directories in the album-level that must not be considered as albums.
+- "--forced-non-album": Directories in the album-level that must not be considered as albums.
