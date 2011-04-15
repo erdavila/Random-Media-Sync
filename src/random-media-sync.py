@@ -104,14 +104,18 @@ def fmt_bytesize(value):
     return '%d (%s)' % (original_value, alts[-1])
 
 
-def delete(path):
+def delete(base, item_path):
+    path = os.path.join(base, item_path)
     if os.path.isdir(path):
         shutil.rmtree(path)
     else:
         os.remove(path)
 
 
-def copy(src, dst):
+def copy(src_dir, dst_dir, item_path):
+    src = os.path.join(src_dir, item_path)
+    dst = os.path.join(dst_dir, item_path)
+    
     if os.path.isdir(src):
         if os.path.isdir(dst):
             remove(dst)
@@ -183,9 +187,11 @@ def parse_args():
     parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION TARGET_FREE")
     parser.add_option("-k", "--keep", dest="keep", metavar="KEEP", default="0",
                       help="minimum number of items currently in DESTINATION that will be kept")
+    parser.add_option("-n", "--dry-run", action="store_true", default=False,
+                      help="do not delete or copy anything")
     parser.add_option("--delete-only-in-dst", action="store_true", default=False,
                       help="delete media found in the destination which are not in the src_dir. ARE YOU SURE YOU WANT TO DO THIS?!")
-    parser.add_option("-v", action="store_true", dest="verbose", default=False,
+    parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False,
                       help="verbose mode")
     (options, args) = parser.parse_args()
     
@@ -199,6 +205,11 @@ def parse_args():
     
     global DEBUG
     DEBUG = options.verbose
+    
+    if options.dry_run:
+        global delete, copy
+        def _do_nothing(*args): pass
+        delete = copy = _do_nothing
     
     return src_dir, dst_dir, options
 
@@ -243,8 +254,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
         if must_delete:
             print 'Deleting the following items in the destination directory that are not in the source directory:'
             def f(path):
-                full_path = os.path.join(dst_dir, path)
-                delete(full_path)
+                delete(dst_dir, path)
         else:
             print 'The following items in the destination directory will be ignored because they are not in the source directory:'
             def f(path):
@@ -290,8 +300,7 @@ def delete_media(src_selected, dst, dst_dir):
     for num, item in enumerate(sorted_media(dst), 1):
         if item not in src_selected:
             print 'Deleting (%d/%d): %s' % (num, len(dst), item)
-            item_path = os.path.join(dst_dir, item)
-            delete(item_path)
+            delete(dst_dir, item)
         else:
             print 'Keeping (%d/%d): %s' % (num, len(dst), item)
 
@@ -300,9 +309,7 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
     for num, path  in enumerate(sorted_media(src_selected), 1):
         if path not in dst:
             print 'Copying (%d/%d): %s' % (num, len(src_selected), path)
-            full_source_path = os.path.join(src_dir, path)
-            full_target_path = os.path.join(dst_dir, path)
-            copy(full_source_path, full_target_path)
+            copy(src_dir, dst_dir, path)
 
 
 def main():
@@ -311,6 +318,8 @@ def main():
     print 'Scanning source: %s' % src_dir
     src = dict((item.path, item) for item in scan_media_dir(src_dir))
     print "%d items found" % len(src)
+    
+    print
     
     print 'Scanning destination: %s' % dst_dir
     dst = dict((item.path, item) for item in scan_media_dir(dst_dir))
