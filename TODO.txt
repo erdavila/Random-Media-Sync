@@ -1,7 +1,6 @@
 - Items to ignore.
 
-- "keep": Amount (count or percentage) of pre-existing target items that must be kept.
-	Allow non-int 
+- Delete empty directories.
 
 - "forced-album": Directories in the artist-level that must be considered as albums.
 
