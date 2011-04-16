@@ -100,34 +100,14 @@ def parse_args():
     return src_dir, dst_dir, options
 
 
-def sorted_media(media):
-    return sorted(media, key=str.upper)
-
-
-def move_media(path, from_, to):
-    item = from_.pop(path)
-    to[path] = item
-
-
-def partition_media(from_, to):
-    """Move to a new set every media in from_ that is not in to"""
-    difference = Media()
-    for item in from_.keys():
-        if item not in to:
-            move_media(item, from_, difference)
-    return difference
-
-
 def process_media_in_dst_only(src, dst, dst_dir, must_delete):
     """
     Finds media in the destination which are not in the source.
     If the must_delete parameter is True, then the media is deleted.
     Remove the media from dst.
     """
-    dst_only = Media()
-    
-    in_dst_only = set(dst) - set(src)
-    if in_dst_only:
+    dst_only = dst.partition(src)
+    if dst_only:
         if must_delete:
             print 'Deleting the following items in the destination directory that are not in the source directory:'
             def f(path):
@@ -137,10 +117,9 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
             def f(path):
                 pass
         
-        for path in sorted_media(in_dst_only):
+        for path in dst_only.sorted():
             print "\t", path
             f(path)
-            move_media(path, dst, dst_only)
         print "\tTotal: %s" % text.format_bytesize(dst_only.size)
         
         print
@@ -154,8 +133,8 @@ def process_kept_media(src, dst, keep_count):
     
     while len(dst_kept) < keep_count and len(dst) > 0:
         chosen = random.choice(dst.keys())
-        move_media(chosen, src, src_kept)
-        move_media(chosen, dst, dst_kept)
+        src.move(chosen, src_kept)
+        dst.move(chosen, dst_kept)
     
     return dst_kept
 
@@ -165,28 +144,28 @@ def select_media(src, src_selected_size_target):
     
     while src_selected.size < src_selected_size_target and len(src) > 0:
         chosen = random.choice(src.keys())
-        move_media(chosen, src, src_selected)
+        src.move(chosen, src_selected)
     
     return src_selected
 
 
 def delete_media(src_selected, dst, dst_dir):
-    dst_delete = partition_media(dst, src_selected)
+    dst_delete = dst.partition(src_selected)
     
     if dst_delete:
         print "Deleting %s" % text.format_bytesize(dst_delete.size)
-        for num, item in enumerate(sorted_media(dst_delete), 1):
+        for num, item in enumerate(dst_delete.sorted(), 1):
             print 'Deleting: %s' % item
             delete(dst_dir, item)
         print
 
 
 def copy_media(src_selected, dst, src_dir, dst_dir):
-    src_sel_copy = partition_media(src_selected, dst)
+    src_sel_copy = src_selected.partition(dst)
     
     if src_sel_copy:
         print "Copying %s" % text.format_bytesize(src_sel_copy.size)
-        for num, path  in enumerate(sorted_media(src_sel_copy), 1):
+        for num, path  in enumerate(src_sel_copy.sorted(), 1):
             print 'Copying (%d/%d): %s' % (num, len(src_sel_copy), path)
             copy(src_dir, dst_dir, path)
         print

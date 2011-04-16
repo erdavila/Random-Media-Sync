@@ -6,7 +6,6 @@ class Media(dict):
     Item = namedtuple('MediaItem', 'type,path,size')
 
     
-    
     def __init__(self, *args, **kwargs):
         super(Media, self).__init__(*args, **kwargs)
         self.size = sum(value.size for value in self.itervalues())
@@ -64,3 +63,18 @@ class Media(dict):
     
     def update(self, *args, **kwargs):
         raise NotImplementedError()
+    
+    def sorted(self):
+        return sorted(self, key=str.upper)
+    
+    def move(self, item_relpath, to):
+        item = self.pop(item_relpath)
+        to[item_relpath] = item
+    
+    def partition(self, to):
+        """Move to a new Media every item in self that is not in to"""
+        difference = Media()
+        for item in self.keys():
+            if item not in to:
+                self.move(item, difference)
+        return difference
