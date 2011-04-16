@@ -1,57 +1,12 @@
 #!/usr/bin/env python
-import sys
 import os
-import re
 import random
-import shutil
 from optparse import OptionParser
+
+from rms.media import Media
 import rms.scanner as scanner
 import rms.text as text
-from rms.media import Media
-
-
-def delete(base_path, item_relpath):
-    full_path = os.path.join(base_path, item_relpath)
-    if os.path.isdir(full_path):
-        shutil.rmtree(full_path)
-    else:
-        os.remove(full_path)
-    
-    # Delete  empty directories
-    while '/' in item_relpath:
-        (item_relpath, _) = os.path.split(item_relpath)
-        full_path = os.path.join(base_path, item_relpath)
-        
-        if len(os.listdir(full_path)) == 0:
-            os.rmdir(full_path)
-        else:
-            # Not empty
-            break
-
-
-def copy(src_dir, dst_dir, item_path):
-    src = os.path.join(src_dir, item_path)
-    dst = os.path.join(dst_dir, item_path)
-    
-    if os.path.isdir(src):
-        if os.path.isdir(dst):
-            remove(dst)
-        shutil.copytree(src, dst, ignore=ignore_non_media)
-    else:
-        dir, _ = os.path.split(dst)
-        if not os.path.isdir(dir):
-            os.makedirs(dir)
-        shutil.copy(src, dst)
-
-
-def ignore_non_media(dirpath, contents):
-    ignored = []
-    for item in contents:
-        full_path = os.path.join(dirpath, item)
-        _, ext = os.path.splitext(item)
-        if os.path.isfile(full_path) and not scanner.is_media_ext(ext):
-            ignored.append(item)
-    return ignored
+import rms.files as files
 
 
 def parse_args():
@@ -67,8 +22,8 @@ def parse_args():
                           TARGET_FREE argument above) or an absolute number of items.""")
     parser.add_option("-n", "--dry-run", action="store_true", default=False,
                       help="Do not delete or copy anything.")
-    parser.add_option("--delete-only-in-dst", action="store_true", default=False,
-                      help="Delete media found in the destination which are not in the src_dir. ARE YOU SURE YOU WANT TO DO THIS?!")
+    parser.add_option("--delete-in-dst-only", action="store_true", default=False,
+                      help="Delete media found in the destination which are not in the source. ARE YOU SURE YOU WANT TO DO THIS?!")
     (options, args) = parser.parse_args()
     
     if len(args) != 3:
@@ -93,9 +48,8 @@ def parse_args():
         options.keep_is_percent = False
     
     if options.dry_run:
-        global delete, copy
         def _do_nothing(*args): pass
-        delete = copy = _do_nothing
+        files.delete = files.copy = _do_nothing
     
     return src_dir, dst_dir, options
 
@@ -111,7 +65,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
         if must_delete:
             print 'Deleting the following items in the destination directory that are not in the source directory:'
             def f(path):
-                delete(dst_dir, path)
+                files.delete(dst_dir, path)
         else:
             print 'The following items in the destination directory will be ignored because they are not in the source directory:'
             def f(path):
@@ -156,7 +110,7 @@ def delete_media(src_selected, dst, dst_dir):
         print "Deleting %s" % text.format_bytesize(dst_delete.size)
         for num, item in enumerate(dst_delete.sorted(), 1):
             print 'Deleting: %s' % item
-            delete(dst_dir, item)
+            files.delete(dst_dir, item)
         print
 
 
@@ -167,7 +121,7 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
         print "Copying %s" % text.format_bytesize(src_sel_copy.size)
         for num, path  in enumerate(src_sel_copy.sorted(), 1):
             print 'Copying (%d/%d): %s' % (num, len(src_sel_copy), path)
-            copy(src_dir, dst_dir, path)
+            files.copy(src_dir, dst_dir, path)
         print
     
     return src_sel_copy
@@ -175,6 +129,7 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
 
 def main():
     src_dir, dst_dir, options = parse_args()
+    
     
     print 'Scanning source: %s' % src_dir
     src = Media((item.path, item) for item in scanner.scan_media_dir(src_dir))
@@ -189,7 +144,7 @@ def main():
     print
     
     
-    process_media_in_dst_only(src, dst, dst_dir, options.delete_only_in_dst)
+    process_media_in_dst_only(src, dst, dst_dir, options.delete_in_dst_only)
     
     
     vfsstat = os.statvfs(dst_dir)
