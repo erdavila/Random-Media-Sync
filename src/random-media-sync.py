@@ -6,36 +6,8 @@ import random
 import shutil
 from optparse import OptionParser
 import rms.scanner as scanner
+import rms.text as text
 from rms.media import Media
-
-
-
-def fmt_bytesize(value):
-    BYTE = 'B'
-    
-    original_value = value
-    alts = []
-    for suffix in ('ki', 'Mi', 'Gi'):
-        abs_value = abs(value)
-        if abs_value < 1024: break
-        
-        v = value / 1024.0
-        if abs_value % 1024 == 0:
-            alt = '%d' % v
-        else:
-            alt = '~%.1f' % v
-        alts.append(alt + suffix + BYTE)
-        
-        value = v
-    
-    if not alts:
-        alts.append(str(value) + BYTE)
-    
-    return alts[-1]
-
-
-def fmt_percent(value, out_of):
-    return '%.1f%%' % (100.0 * value / out_of)
 
 
 def delete(base_path, item_relpath):
@@ -77,55 +49,9 @@ def ignore_non_media(dirpath, contents):
     for item in contents:
         full_path = os.path.join(dirpath, item)
         _, ext = os.path.splitext(item)
-        if os.path.isfile(full_path) and not is_media_ext(ext):
+        if os.path.isfile(full_path) and not scanner.is_media_ext(ext):
             ignored.append(item)
     return ignored
-
-
-def parse_percent(value):
-    if value[-1] == "%":
-        return float(value[:-1])
-    else:
-        raise ValueError()
-
-
-def parse_target_free(free_target):
-    """
-    The value of free_target must be a percentage or a byte size.
-    Valid values: "10.5%", "1%", "567", "9B", "1023kB", "57.3Mb", "999GiB" 
-    """
-    try:
-        return parse_percent(free_target), True
-    except ValueError:
-        pass
-    
-    m = re.search(r'^(\d+(?:\.\d+)?)([kmg]i?|)b?$', free_target, re.IGNORECASE)
-    if m is not None:
-        val = float(m.group(1))
-        multiplier = m.group(2).lower()
-        if multiplier != '':
-            val *= 1024
-            if multiplier != 'k':
-                val *= 1024
-                if multiplier != 'm':
-                    assert multiplier == 'g'
-                    val *= 1024
-            
-        return val, False
-    
-    return int(free_target), False
-
-
-def parse_keep(keep):
-    """
-    The value of keep must be a percentage or a count.
-    Example of valid values: "10.5%", "1%", "567"
-    Example of invalid values: "10 %", "1 %", "567", "abc"
-    """
-    try:
-        return parse_percent(keep), True
-    except ValueError:
-        return int(keep), False
 
 
 def parse_args():
@@ -150,8 +76,21 @@ def parse_args():
     
     src_dir = args[0]
     dst_dir = args[1]
-    options.device_free_target, options.device_free_target_is_percent = parse_target_free(args[2])
-    options.keep, options.keep_is_percent = parse_keep(options.keep)
+    target_free = args[2]
+    
+    try:
+        options.device_free_target = text.parse_percent(target_free)
+        options.device_free_target_is_percent = True
+    except ValueError:
+        options.device_free_target = text.parse_bytesize(target_free)
+        options.device_free_target_is_percent = False
+    
+    try:
+        options.keep = text.parse_percent(options.keep)
+        options.keep_is_percent = True
+    except ValueError:
+        options.keep = int(options.keep)
+        options.keep_is_percent = False
     
     if options.dry_run:
         global delete, copy
@@ -202,7 +141,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
             print "\t", path
             f(path)
             move_media(path, dst, dst_only)
-        print "\tTotal: %s" % fmt_bytesize(dst_only.size)
+        print "\tTotal: %s" % text.format_bytesize(dst_only.size)
         
         print
     
@@ -235,7 +174,7 @@ def delete_media(src_selected, dst, dst_dir):
     dst_delete = partition_media(dst, src_selected)
     
     if dst_delete:
-        print "Deleting %s" % fmt_bytesize(dst_delete.size)
+        print "Deleting %s" % text.format_bytesize(dst_delete.size)
         for num, item in enumerate(sorted_media(dst_delete), 1):
             print 'Deleting: %s' % item
             delete(dst_dir, item)
@@ -246,7 +185,7 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
     src_sel_copy = partition_media(src_selected, dst)
     
     if src_sel_copy:
-        print "Copying %s" % fmt_bytesize(src_sel_copy.size)
+        print "Copying %s" % text.format_bytesize(src_sel_copy.size)
         for num, path  in enumerate(sorted_media(src_sel_copy), 1):
             print 'Copying (%d/%d): %s' % (num, len(src_sel_copy), path)
             copy(src_dir, dst_dir, path)
@@ -260,13 +199,13 @@ def main():
     
     print 'Scanning source: %s' % src_dir
     src = Media((item.path, item) for item in scanner.scan_media_dir(src_dir))
-    print "%d items found in %s" % (len(src), fmt_bytesize(src.size))
+    print "%d items found in %s" % (len(src), text.format_bytesize(src.size))
     
     print
     
     print 'Scanning destination: %s' % dst_dir
     dst = Media((item.path, item) for item in scanner.scan_media_dir(dst_dir))
-    print "%d items found in %s" % (len(dst), fmt_bytesize(dst.size))
+    print "%d items found in %s" % (len(dst), text.format_bytesize(dst.size))
     
     print
     
@@ -277,9 +216,9 @@ def main():
     vfsstat = os.statvfs(dst_dir)
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
-    print "Total size of the destination device: %s" % fmt_bytesize(device_total)
-    print "Media currently in the destination device: %s (%s)" % (fmt_bytesize(dst.size), fmt_percent(dst.size, device_total))
-    print "Current free space in the destination device: %s (%s)" % (fmt_bytesize(device_free_current), fmt_percent(device_free_current, device_total))
+    print "Total size of the destination device: %s" % text.format_bytesize(device_total)
+    print "Media currently in the destination device: %s (%s)" % (text.format_bytesize(dst.size), text.format_percent(dst.size, device_total))
+    print "Current free space in the destination device: %s (%s)" % (text.format_bytesize(device_free_current), text.format_percent(device_free_current, device_total))
     print
     
     
@@ -310,9 +249,9 @@ def main():
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
     dst_media_size = dst.size + dst_kept.size + src_sel_copy.size
-    print "Total size of the destination device: %s" % fmt_bytesize(device_total)
-    print "Media in the destination device: %s (%s)" % (fmt_bytesize(dst_media_size), fmt_percent(dst_media_size, device_total))
-    print "Free space in the destination device: %s (%s)" % (fmt_bytesize(device_free_current), fmt_percent(device_free_current, device_total))
+    print "Total size of the destination device: %s" % text.format_bytesize(device_total)
+    print "Media in the destination device: %s (%s)" % (text.format_bytesize(dst_media_size), text.format_percent(dst_media_size, device_total))
+    print "Free space in the destination device: %s (%s)" % (text.format_bytesize(device_free_current), text.format_percent(device_free_current, device_total))
 
 
 if __name__ == '__main__':
