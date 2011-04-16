@@ -101,7 +101,11 @@ def fmt_bytesize(value):
     if not alts:
         alts.append(str(value) + BYTE)
     
-    return '%d (%s)' % (original_value, alts[-1])
+    return alts[-1]
+
+
+def fmt_percent(value, out_of):
+    return '%.1f%%' % (100.0 * value / out_of)
 
 
 def delete(base_path, item_relpath):
@@ -117,7 +121,6 @@ def delete(base_path, item_relpath):
         full_path = os.path.join(base_path, item_relpath)
         
         if len(os.listdir(full_path)) == 0:
-            debug('Deleting empty dir:', item_relpath)
             os.rmdir(full_path)
         else:
             # Not empty
@@ -196,15 +199,20 @@ def parse_keep(keep):
 
 
 def parse_args():
-    parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION TARGET_FREE")
+    parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION TARGET_FREE",
+                          description="""SOURCE and DESTINATION are directories.
+                              TARGET_FREE is the amount of space that will be kept
+                              unused in the target device. It can be a percentage
+                              ("50%", "0%", "25.7%", etc.) or a byte-size value ("1gb",
+                              "2.5GiB", "10mB", etc.).""")
     parser.add_option("-k", "--keep", dest="keep", metavar="KEEP", default="0",
-                      help="minimum number of items currently in DESTINATION that will be kept")
+                      help="""Minimum number of items currently in DESTINATION
+                          that will be kept. It can be a percentage (see 
+                          TARGET_FREE argument above) or an absolute number of items.""")
     parser.add_option("-n", "--dry-run", action="store_true", default=False,
-                      help="do not delete or copy anything")
+                      help="Do not delete or copy anything.")
     parser.add_option("--delete-only-in-dst", action="store_true", default=False,
-                      help="delete media found in the destination which are not in the src_dir. ARE YOU SURE YOU WANT TO DO THIS?!")
-    parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False,
-                      help="verbose mode")
+                      help="Delete media found in the destination which are not in the src_dir. ARE YOU SURE YOU WANT TO DO THIS?!")
     (options, args) = parser.parse_args()
     
     if len(args) != 3:
@@ -214,9 +222,6 @@ def parse_args():
     dst_dir = args[1]
     options.device_free_target, options.device_free_target_is_percent = parse_target_free(args[2])
     options.keep, options.keep_is_percent = parse_keep(options.keep)
-    
-    global DEBUG
-    DEBUG = options.verbose
     
     if options.dry_run:
         global delete, copy
@@ -230,27 +235,78 @@ def sorted_media(media):
     return sorted(media, key=str.upper)
 
 
-class MediaWithSize(object):
-    def __init__(self):
-        self.items = {}
-        self.size = 0
-    
-    def __len__(self):
-        return len(self.items)
-    
-    def __iter__(self):
-        return iter(self.items)
+class MediaWithSize(dict):
+    def __init__(self, *args, **kwargs):
+        super(MediaWithSize, self).__init__(*args, **kwargs)
+        self.size = sum(value.size for value in self.itervalues())
     
     def __setitem__(self, key, value):
-        if key in self.items:
-            self.size -= self.items[key].size
-        self.items[key] = value
+        if key in self:
+            previous = self[key]
+            has_previous = True
+        else:
+            has_previous = False
+        
+        super(MediaWithSize, self).__setitem__(key, value)
+        
+        if has_previous:
+            self.size -= previous.size
+        
         self.size += value.size
+    
+    def __delitem__(self, key):
+        if key in self:
+            previous = self[key]
+            has_previous = True
+        else:
+            has_previous = False
+        
+        super(MediaWithSize, self).__delitem__(key)
+        
+        if has_previous:
+            self.size -= previous.size
+    
+    def pop(self, key, *args):
+        try:
+            value = super(MediaWithSize, self).pop(key)
+        except KeyError:
+            if args:
+                (default,) = args
+                return default
+            else:
+                raise KeyError()
+        else:
+            self.size -= value.size
+            return value
+    
+    def popitem(self):
+        (key, value) = super(MediaWithSize, self).popitem()
+        self.size -= value.size
+        return (key, value)
+    
+    def setdefault(self, key, default=None):
+        if key in self:
+            return self[key]
+        else:
+            self.__setitem__(key, default)
+            return default
+    
+    def update(self, *args, **kwargs):
+        raise NotImplementedError()
     
 
 def move_media(path, from_, to):
     item = from_.pop(path)
     to[path] = item
+
+
+def partition_media(from_, to):
+    """Move to a new set every media in from_ that is not in to"""
+    difference = MediaWithSize()
+    for item in from_.keys():
+        if item not in to:
+            move_media(item, from_, difference)
+    return difference
 
 
 def process_media_in_dst_only(src, dst, dst_dir, must_delete):
@@ -259,7 +315,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
     If the must_delete parameter is True, then the media is deleted.
     Remove the media from dst.
     """
-    deleted_media = {}
+    dst_only = MediaWithSize()
     
     in_dst_only = set(dst) - set(src)
     if in_dst_only:
@@ -275,25 +331,22 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
         for path in sorted_media(in_dst_only):
             print "\t", path
             f(path)
-            move_media(path, dst, deleted_media)
+            move_media(path, dst, dst_only)
+        print "\tTotal: %s" % fmt_bytesize(dst_only.size)
         
         print
     
-    return deleted_media
+    return dst_only
 
 
 def process_kept_media(src, dst, keep_count):
     src_kept = {}
-    dst_kept = {}
+    dst_kept = MediaWithSize()
     
     while len(dst_kept) < keep_count and len(dst) > 0:
         chosen = random.choice(dst.keys())
         move_media(chosen, src, src_kept)
         move_media(chosen, dst, dst_kept)
-    
-    if len(dst_kept) > 0:
-        print 'Keeping %d items' % len(dst_kept)
-        print
     
     return dst_kept
 
@@ -309,33 +362,41 @@ def select_media(src, src_selected_size_target):
 
 
 def delete_media(src_selected, dst, dst_dir):
-    for num, item in enumerate(sorted_media(dst), 1):
-        if item not in src_selected:
-            print 'Deleting (%d/%d): %s' % (num, len(dst), item)
+    dst_delete = partition_media(dst, src_selected)
+    
+    if dst_delete:
+        print "Deleting %s" % fmt_bytesize(dst_delete.size)
+        for num, item in enumerate(sorted_media(dst_delete), 1):
+            print 'Deleting: %s' % item
             delete(dst_dir, item)
-        else:
-            print 'Keeping (%d/%d): %s' % (num, len(dst), item)
+        print
 
 
 def copy_media(src_selected, dst, src_dir, dst_dir):
-    for num, path  in enumerate(sorted_media(src_selected), 1):
-        if path not in dst:
-            print 'Copying (%d/%d): %s' % (num, len(src_selected), path)
+    src_sel_copy = partition_media(src_selected, dst)
+    
+    if src_sel_copy:
+        print "Copying %s" % fmt_bytesize(src_sel_copy.size)
+        for num, path  in enumerate(sorted_media(src_sel_copy), 1):
+            print 'Copying (%d/%d): %s' % (num, len(src_sel_copy), path)
             copy(src_dir, dst_dir, path)
+        print
+    
+    return src_sel_copy
 
 
 def main():
     src_dir, dst_dir, options = parse_args()
     
     print 'Scanning source: %s' % src_dir
-    src = dict((item.path, item) for item in scan_media_dir(src_dir))
-    print "%d items found" % len(src)
+    src = MediaWithSize((item.path, item) for item in scan_media_dir(src_dir))
+    print "%d items found in %s" % (len(src), fmt_bytesize(src.size))
     
     print
     
     print 'Scanning destination: %s' % dst_dir
-    dst = dict((item.path, item) for item in scan_media_dir(dst_dir))
-    print "%d items found" % len(dst)
+    dst = MediaWithSize((item.path, item) for item in scan_media_dir(dst_dir))
+    print "%d items found in %s" % (len(dst), fmt_bytesize(dst.size))
     
     print
     
@@ -343,51 +404,45 @@ def main():
     process_media_in_dst_only(src, dst, dst_dir, options.delete_only_in_dst)
     
     
+    vfsstat = os.statvfs(dst_dir)
+    device_total = vfsstat.f_bsize * vfsstat.f_blocks
+    device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
+    print "Total size of the destination device: %s" % fmt_bytesize(device_total)
+    print "Media currently in the destination device: %s (%s)" % (fmt_bytesize(dst.size), fmt_percent(dst.size, device_total))
+    print "Current free space in the destination device: %s (%s)" % (fmt_bytesize(device_free_current), fmt_percent(device_free_current, device_total))
+    print
+    
+    
     if options.keep_is_percent:
         keep_count = len(dst) * options.keep / 100
     else:
         keep_count = options.keep
-    debug(keep_count=keep_count, len__dst=len(dst))
     
-    process_kept_media(src, dst, keep_count)
+    dst_kept = process_kept_media(src, dst, keep_count)
     
     
-    vfsstat = os.statvfs(dst_dir)
     if options.device_free_target_is_percent:
-        device_total = vfsstat.f_bsize * vfsstat.f_blocks
-        debug(device_total=fmt_bytesize(device_total))
         device_free_target = device_total * options.device_free_target / 100
     else:
         device_free_target = options.device_free_target
     
-    device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
-    dst_size = sum(item.size for item in dst.itervalues())
-    src_selected_size_target = dst_size + device_free_current - device_free_target
-    
-    debug(device_free_target=fmt_bytesize(device_free_target))
-    debug(device_free_current=fmt_bytesize(device_free_current))
-    debug(dst_size=fmt_bytesize(dst_size))
-    debug(src_selected_size_target=fmt_bytesize(src_selected_size_target))
-    
+    src_selected_size_target = dst.size + device_free_current - device_free_target
     src_selected = select_media(src, src_selected_size_target)
     
     
     delete_media(src_selected, dst, dst_dir)
     
     
-    copy_media(src_selected, dst, src_dir, dst_dir)
+    src_sel_copy = copy_media(src_selected, dst, src_dir, dst_dir)
     
-    if DEBUG:
-        vfsstat = os.statvfs(dst_dir)
-        device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
-        debug(device_free_current=fmt_bytesize(device_free_current))
 
-
-def debug(*args, **kwargs):
-    if DEBUG:
-        args_msg = ' '.join(str(arg) for arg in args)
-        kwargs_msg = ', '.join(key + ' = ' + str(val) for key, val in kwargs.iteritems())
-        print ">>>", args_msg + kwargs_msg
+    vfsstat = os.statvfs(dst_dir)
+    device_total = vfsstat.f_bsize * vfsstat.f_blocks
+    device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
+    dst_media_size = dst.size + dst_kept.size + src_sel_copy.size
+    print "Total size of the destination device: %s" % fmt_bytesize(device_total)
+    print "Media in the destination device: %s (%s)" % (fmt_bytesize(dst_media_size), fmt_percent(dst_media_size, device_total))
+    print "Free space in the destination device: %s (%s)" % (fmt_bytesize(device_free_current), fmt_percent(device_free_current, device_total))
 
 
 if __name__ == '__main__':
