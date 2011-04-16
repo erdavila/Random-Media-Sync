@@ -5,79 +5,9 @@ import re
 import random
 import shutil
 from optparse import OptionParser
-from collections import namedtuple
+import rms.scanner as scanner
+from rms.media import Media
 
-
-
-MediaItem = namedtuple('MediaItem', 'type,path,size')
-
-
-
-def scan_media_dir(media_dir):
-    for item in sorted(os.listdir(media_dir), key=str.upper):
-        item_path = os.path.join(media_dir, item)
-        if os.path.isfile(item_path):
-            f = scan_file(media_dir, item)
-            if f is not None:
-                yield f
-        elif os.path.isdir(item_path):
-            for artist_item in scan_artist_dir(media_dir, item):
-                yield artist_item
-
-
-def scan_file(media_dir, file_rel_path):
-    _, ext = os.path.splitext(file_rel_path)
-    
-    if not is_media_ext(ext):
-        return None
-    
-    file_path = os.path.join(media_dir, file_rel_path)
-    file_size = os.path.getsize(file_path)
-    return MediaItem(type='FILE', path=file_rel_path, size=file_size)
-
-
-def scan_artist_dir(media_dir, artist_rel_path):
-    artist_path = os.path.join(media_dir, artist_rel_path)
-    for item in sorted(os.listdir(artist_path), key=str.upper):
-        item_path = os.path.join(artist_path, item)
-        if os.path.isfile(item_path):
-            f = scan_file(media_dir, os.path.join(artist_rel_path, item))
-            if f is not None:
-                yield f
-        elif os.path.isdir(item_path):
-            a = scan_album_dir(media_dir, os.path.join(artist_rel_path, item))
-            if a is not None:
-                yield a
-        
-
-def scan_album_dir(media_dir, album_rel_path):
-    album_path = os.path.join(media_dir, album_rel_path)
-    
-    total_size = 0
-    for (path, _, files) in os.walk(album_path):
-        for file in files:
-            _, ext = os.path.splitext(file)
-            if is_media_ext(ext):
-                filepath = os.path.join(path, file)
-                total_size += os.path.getsize(filepath)
-    
-    if total_size:
-        return MediaItem(type='ALBUM', path=album_rel_path, size=total_size)
-    else:
-        return None
-
-
-
-MEDIA_EXTS = (
-    '.mid',
-    '.mp3',
-    '.ogg',
-    '.wav',
-    '.wma',
-)
-def is_media_ext(ext):
-    ext = ext.lower()
-    return ext in MEDIA_EXTS
 
 
 def fmt_bytesize(value):
@@ -235,66 +165,6 @@ def sorted_media(media):
     return sorted(media, key=str.upper)
 
 
-class MediaWithSize(dict):
-    def __init__(self, *args, **kwargs):
-        super(MediaWithSize, self).__init__(*args, **kwargs)
-        self.size = sum(value.size for value in self.itervalues())
-    
-    def __setitem__(self, key, value):
-        if key in self:
-            previous = self[key]
-            has_previous = True
-        else:
-            has_previous = False
-        
-        super(MediaWithSize, self).__setitem__(key, value)
-        
-        if has_previous:
-            self.size -= previous.size
-        
-        self.size += value.size
-    
-    def __delitem__(self, key):
-        if key in self:
-            previous = self[key]
-            has_previous = True
-        else:
-            has_previous = False
-        
-        super(MediaWithSize, self).__delitem__(key)
-        
-        if has_previous:
-            self.size -= previous.size
-    
-    def pop(self, key, *args):
-        try:
-            value = super(MediaWithSize, self).pop(key)
-        except KeyError:
-            if args:
-                (default,) = args
-                return default
-            else:
-                raise KeyError()
-        else:
-            self.size -= value.size
-            return value
-    
-    def popitem(self):
-        (key, value) = super(MediaWithSize, self).popitem()
-        self.size -= value.size
-        return (key, value)
-    
-    def setdefault(self, key, default=None):
-        if key in self:
-            return self[key]
-        else:
-            self.__setitem__(key, default)
-            return default
-    
-    def update(self, *args, **kwargs):
-        raise NotImplementedError()
-    
-
 def move_media(path, from_, to):
     item = from_.pop(path)
     to[path] = item
@@ -302,7 +172,7 @@ def move_media(path, from_, to):
 
 def partition_media(from_, to):
     """Move to a new set every media in from_ that is not in to"""
-    difference = MediaWithSize()
+    difference = Media()
     for item in from_.keys():
         if item not in to:
             move_media(item, from_, difference)
@@ -315,7 +185,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
     If the must_delete parameter is True, then the media is deleted.
     Remove the media from dst.
     """
-    dst_only = MediaWithSize()
+    dst_only = Media()
     
     in_dst_only = set(dst) - set(src)
     if in_dst_only:
@@ -341,7 +211,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
 
 def process_kept_media(src, dst, keep_count):
     src_kept = {}
-    dst_kept = MediaWithSize()
+    dst_kept = Media()
     
     while len(dst_kept) < keep_count and len(dst) > 0:
         chosen = random.choice(dst.keys())
@@ -352,7 +222,7 @@ def process_kept_media(src, dst, keep_count):
 
 
 def select_media(src, src_selected_size_target):
-    src_selected = MediaWithSize()
+    src_selected = Media()
     
     while src_selected.size < src_selected_size_target and len(src) > 0:
         chosen = random.choice(src.keys())
@@ -389,13 +259,13 @@ def main():
     src_dir, dst_dir, options = parse_args()
     
     print 'Scanning source: %s' % src_dir
-    src = MediaWithSize((item.path, item) for item in scan_media_dir(src_dir))
+    src = Media((item.path, item) for item in scanner.scan_media_dir(src_dir))
     print "%d items found in %s" % (len(src), fmt_bytesize(src.size))
     
     print
     
     print 'Scanning destination: %s' % dst_dir
-    dst = MediaWithSize((item.path, item) for item in scan_media_dir(dst_dir))
+    dst = Media((item.path, item) for item in scanner.scan_media_dir(dst_dir))
     print "%d items found in %s" % (len(dst), fmt_bytesize(dst.size))
     
     print
