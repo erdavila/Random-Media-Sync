@@ -3,7 +3,7 @@ from collections import namedtuple
 
 
 class Media(dict):
-    Item = namedtuple('MediaItem', 'type,path,size')
+    Item = namedtuple('MediaItem', 'type,relpath,size')
 
     
     def __init__(self, *args, **kwargs):

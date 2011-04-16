@@ -4,9 +4,9 @@ import random
 from optparse import OptionParser
 
 from rms.media import Media
-import rms.scanner as scanner
-import rms.text as text
-import rms.files as files
+import rms.scanner
+import rms.text
+import rms.files
 
 
 def parse_args():
@@ -34,14 +34,14 @@ def parse_args():
     target_free = args[2]
     
     try:
-        options.device_free_target = text.parse_percent(target_free)
+        options.device_free_target = rms.text.parse_percent(target_free)
         options.device_free_target_is_percent = True
     except ValueError:
-        options.device_free_target = text.parse_bytesize(target_free)
+        options.device_free_target = rms.text.parse_bytesize(target_free)
         options.device_free_target_is_percent = False
     
     try:
-        options.keep = text.parse_percent(options.keep)
+        options.keep = rms.text.parse_percent(options.keep)
         options.keep_is_percent = True
     except ValueError:
         options.keep = int(options.keep)
@@ -49,7 +49,7 @@ def parse_args():
     
     if options.dry_run:
         def _do_nothing(*args): pass
-        files.delete = files.copy = _do_nothing
+        rms.files.delete = rms.files.copy = _do_nothing
     
     return src_dir, dst_dir, options
 
@@ -65,7 +65,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
         if must_delete:
             print 'Deleting the following items in the destination directory that are not in the source directory:'
             def f(path):
-                files.delete(dst_dir, path)
+                rms.files.delete(dst_dir, path)
         else:
             print 'The following items in the destination directory will be ignored because they are not in the source directory:'
             def f(path):
@@ -74,7 +74,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
         for path in dst_only.sorted():
             print "\t", path
             f(path)
-        print "\tTotal: %s" % text.format_bytesize(dst_only.size)
+        print "\tTotal: %s" % rms.text.format_bytesize(dst_only.size)
         
         print
     
@@ -107,10 +107,10 @@ def delete_media(src_selected, dst, dst_dir):
     dst_delete = dst.partition(src_selected)
     
     if dst_delete:
-        print "Deleting %s" % text.format_bytesize(dst_delete.size)
+        print "Deleting %s" % rms.text.format_bytesize(dst_delete.size)
         for num, item in enumerate(dst_delete.sorted(), 1):
             print 'Deleting: %s' % item
-            files.delete(dst_dir, item)
+            rms.files.delete(dst_dir, item)
         print
 
 
@@ -118,10 +118,10 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
     src_sel_copy = src_selected.partition(dst)
     
     if src_sel_copy:
-        print "Copying %s" % text.format_bytesize(src_sel_copy.size)
+        print "Copying %s" % rms.text.format_bytesize(src_sel_copy.size)
         for num, path  in enumerate(src_sel_copy.sorted(), 1):
             print 'Copying (%d/%d): %s' % (num, len(src_sel_copy), path)
-            files.copy(src_dir, dst_dir, path)
+            rms.files.copy(src_dir, dst_dir, path)
         print
     
     return src_sel_copy
@@ -131,15 +131,24 @@ def main():
     src_dir, dst_dir, options = parse_args()
     
     
+    forced_albums = set([
+        "LocoRoco's Song -LocoRoco Original Soundtrack-",
+        "Symphonic Pink Floyd",
+        "The Hitchhiker's Guide To The Galaxy - Soundtrack",
+    ])
+    
+    scanner = rms.scanner.Scanner(forced_albums, ())
+    
+    
     print 'Scanning source: %s' % src_dir
-    src = Media((item.path, item) for item in scanner.scan_media_dir(src_dir))
-    print "%d items found in %s" % (len(src), text.format_bytesize(src.size))
+    src = scanner.scan(src_dir)
+    print "%d items found in %s" % (len(src), rms.text.format_bytesize(src.size))
     
     print
     
     print 'Scanning destination: %s' % dst_dir
-    dst = Media((item.path, item) for item in scanner.scan_media_dir(dst_dir))
-    print "%d items found in %s" % (len(dst), text.format_bytesize(dst.size))
+    dst = scanner.scan(dst_dir)
+    print "%d items found in %s" % (len(dst), rms.text.format_bytesize(dst.size))
     
     print
     
@@ -150,9 +159,9 @@ def main():
     vfsstat = os.statvfs(dst_dir)
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
-    print "Total size of the destination device: %s" % text.format_bytesize(device_total)
-    print "Media currently in the destination device: %s (%s)" % (text.format_bytesize(dst.size), text.format_percent(dst.size, device_total))
-    print "Current free space in the destination device: %s (%s)" % (text.format_bytesize(device_free_current), text.format_percent(device_free_current, device_total))
+    print "Total size of the destination device: %s" % rms.text.format_bytesize(device_total)
+    print "Media currently in the destination device: %s (%s)" % (rms.text.format_bytesize(dst.size), rms.text.format_percent(dst.size, device_total))
+    print "Current free space in the destination device: %s (%s)" % (rms.text.format_bytesize(device_free_current), rms.text.format_percent(device_free_current, device_total))
     print
     
     
@@ -183,9 +192,9 @@ def main():
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
     dst_media_size = dst.size + dst_kept.size + src_sel_copy.size
-    print "Total size of the destination device: %s" % text.format_bytesize(device_total)
-    print "Media in the destination device: %s (%s)" % (text.format_bytesize(dst_media_size), text.format_percent(dst_media_size, device_total))
-    print "Free space in the destination device: %s (%s)" % (text.format_bytesize(device_free_current), text.format_percent(device_free_current, device_total))
+    print "Total size of the destination device: %s" % rms.text.format_bytesize(device_total)
+    print "Media in the destination device: %s (%s)" % (rms.text.format_bytesize(dst_media_size), rms.text.format_percent(dst_media_size, device_total))
+    print "Free space in the destination device: %s (%s)" % (rms.text.format_bytesize(device_free_current), rms.text.format_percent(device_free_current, device_total))
 
 
 if __name__ == '__main__':
