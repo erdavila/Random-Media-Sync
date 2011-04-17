@@ -10,18 +10,23 @@ import rms.files
 
 
 def parse_args():
-    parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION TARGET_FREE",
-                          description="""SOURCE and DESTINATION are directories.
-                              TARGET_FREE is the minimum amount of space that will be kept
-                              unused in the target device. It can be a percentage
-                              ("50%", "0%", "25.7%", etc.) or a byte-size value ("1gb",
-                              "2.5GiB", "10mB", etc.).""")
+    import re
+    def clean(s):
+        return re.sub(r'\s+', ' ', s)
+    
+    
+    parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION")
+    parser.add_option("-f", "--free", dest="free", metavar="FREE", default=None,
+                      help=clean("""Minimum amount of space that will be let unused
+                          in the destination device. Can be a percentage ("50%",
+                          "0%", "25.7%", etc.) or a byte-size value ("1gb", "2.5GiB",
+                          "10mB", etc.). Default: the current free space."""))
     parser.add_option("-k", "--keep", dest="keep", metavar="KEEP", default="0",
-                      help="""Minimum number of items currently in DESTINATION
-                          that will be kept. It can be a percentage (see 
-                          TARGET_FREE argument above) or an absolute number of items.""")
+                      help=clean("""Minimum number of items currently in DESTINATION
+                          that will be kept. Can be a percentage (see TARGET_FREE
+                          argument above) or an absolute number of items. Default: 0."""))
     parser.add_option("--ignore", metavar="ITEM-PATH", action="append", dest="ignore", default=[],
-                      help="Ignores an item.")
+                      help="Ignore an item.")
     parser.add_option("--is-album", metavar="DIR-PATH", action="append", dest="forced_albums", default=[],
                       help="Force a directory item to be treated as an album.")
     parser.add_option("--is-not-album", metavar="DIR-PATH", action="append", dest="not_albums", default=[],
@@ -29,22 +34,25 @@ def parse_args():
     parser.add_option("-n", "--dry-run", action="store_true", default=False,
                       help="Do not delete or copy anything.")
     parser.add_option("--delete-in-dst-only", action="store_true", default=False,
-                      help="Delete media found in the destination which are not in the source. ARE YOU SURE YOU WANT TO DO THIS?!")
+                      help=clean("""Delete media found in the destination which are not
+                          in the source. ARE YOU SURE YOU WANT TO DO THIS?!"""))
     (options, args) = parser.parse_args()
     
-    if len(args) != 3:
+    if len(args) != 2:
         parser.error("Incorrect number of arguments")
     
     src_dir = args[0]
     dst_dir = args[1]
-    target_free = args[2]
     
-    try:
-        options.device_free_target = rms.text.parse_percent(target_free)
-        options.device_free_target_is_percent = True
-    except ValueError:
-        options.device_free_target = rms.text.parse_bytesize(target_free)
-        options.device_free_target_is_percent = False
+    if options.free is None:
+        options.free_type = 'CURRENT'
+    else:
+        try:
+            options.free = rms.text.parse_percent(options.free)
+            options.free_type = 'PERCENT'
+        except ValueError:
+            options.free = rms.text.parse_bytesize(options.free)
+            options.free_type = 'BYTES'
     
     try:
         options.keep = rms.text.parse_percent(options.keep)
@@ -176,10 +184,14 @@ def main():
     dst_kept = process_kept_media(src, dst, keep_count)
     
     
-    if options.device_free_target_is_percent:
-        device_free_target = device_total * options.device_free_target / 100
+    if options.free_type == 'BYTES':
+        device_free_target = options.free
+    elif options.free_type == 'PERCENT':
+        device_free_target = device_total * options.free / 100
     else:
-        device_free_target = options.device_free_target
+        assert options.free_type == 'CURRENT'
+        assert options.free is None
+        device_free_target = device_free_current
     
     src_selected_size_target = dst.size + device_free_current - device_free_target
     src_selected = select_media(src, src_selected_size_target)
