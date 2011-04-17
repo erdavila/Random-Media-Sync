@@ -15,7 +15,11 @@ def parse_args():
         return re.sub(r'\s+', ' ', s)
     
     
-    parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION")
+    parser = OptionParser(usage="Usage: %prog [options] [[SOURCE] DESTINATION]")
+    parser.add_option("-s", "--source", dest="src_dir", default=None, metavar="SOURCE",
+                      help="The source media directory.")
+    parser.add_option("-d", "--dest", dest="dst_dir", default=None, metavar="DESTINATION",
+                      help="The destination media directory.")
     parser.add_option("-f", "--free", dest="free", metavar="FREE", default=None,
                       help=clean("""Minimum amount of space that will be let unused
                           in the destination device. Can be a percentage ("50%",
@@ -38,11 +42,22 @@ def parse_args():
                           in the source. ARE YOU SURE YOU WANT TO DO THIS?!"""))
     (options, args) = parser.parse_args()
     
-    if len(args) != 2:
-        parser.error("Incorrect number of arguments")
+    if args:
+        options.dst_dir = args.pop(-1)
     
-    src_dir = args[0]
-    dst_dir = args[1]
+    if args:
+        options.src_dir = args.pop(-1)
+    
+    if args:
+        parser.error("Too many arguments")
+    
+    
+    if options.dst_dir is None:
+        parser.error("DESTINATION not specified")
+    
+    if options.src_dir is None:
+        parser.error("SOURCE not specified")
+    
     
     if options.free is None:
         options.free_type = 'CURRENT'
@@ -65,7 +80,7 @@ def parse_args():
         def _do_nothing(*args): pass
         rms.files.delete = rms.files.copy = _do_nothing
     
-    return src_dir, dst_dir, options
+    return options
 
 
 def process_media_in_dst_only(src, dst, dst_dir, must_delete):
@@ -147,27 +162,27 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
 
 
 def main():
-    src_dir, dst_dir, options = parse_args()
+    options = parse_args()
     
     scanner = rms.scanner.Scanner(options.ignore, options.forced_albums, options.not_albums)
     
-    print 'Scanning source: %s' % src_dir
-    src = scanner.scan(src_dir)
+    print 'Scanning source: %s' % options.src_dir
+    src = scanner.scan(options.src_dir)
     print "%d items found in %s" % (len(src), rms.text.format_bytesize(src.size))
     
     print
     
-    print 'Scanning destination: %s' % dst_dir
-    dst = scanner.scan(dst_dir)
+    print 'Scanning destination: %s' % options.dst_dir
+    dst = scanner.scan(options.dst_dir)
     print "%d items found in %s" % (len(dst), rms.text.format_bytesize(dst.size))
     
     print
     
     
-    process_media_in_dst_only(src, dst, dst_dir, options.delete_in_dst_only)
+    process_media_in_dst_only(src, dst, options.dst_dir, options.delete_in_dst_only)
     
     
-    vfsstat = os.statvfs(dst_dir)
+    vfsstat = os.statvfs(options.dst_dir)
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
     print "Total size of the destination device: %s" % rms.text.format_bytesize(device_total)
@@ -197,13 +212,13 @@ def main():
     src_selected = select_media(src, src_selected_size_target)
     
     
-    delete_media(src_selected, dst, dst_dir)
+    delete_media(src_selected, dst, options.dst_dir)
     
     
-    src_sel_copy = copy_media(src_selected, dst, src_dir, dst_dir)
+    src_sel_copy = copy_media(src_selected, dst, options.src_dir, options.dst_dir)
     
 
-    vfsstat = os.statvfs(dst_dir)
+    vfsstat = os.statvfs(options.dst_dir)
     device_total = vfsstat.f_bsize * vfsstat.f_blocks
     device_free_current = vfsstat.f_bsize * vfsstat.f_bavail
     dst_media_size = dst.size + dst_kept.size + src_sel_copy.size
