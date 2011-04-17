@@ -1,9 +1,5 @@
-- Items to ignore.
-
 - Show estimated time while copying.
 
-- "--is-album": Directories in the artist-level that must be considered as albums.
-
-- "--is-not-album": Directories in the album-level that must not be considered as albums.
+- Make "--keep" optional. Default value: the same space currently occupied.
 
 - Make "--keep" accept bytesize parameter

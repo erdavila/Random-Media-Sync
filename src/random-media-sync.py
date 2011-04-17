@@ -20,6 +20,12 @@ def parse_args():
                       help="""Minimum number of items currently in DESTINATION
                           that will be kept. It can be a percentage (see 
                           TARGET_FREE argument above) or an absolute number of items.""")
+    parser.add_option("--ignore", metavar="ITEM-PATH", action="append", dest="ignore", default=[],
+                      help="Ignores an item.")
+    parser.add_option("--is-album", metavar="DIR-PATH", action="append", dest="forced_albums", default=[],
+                      help="Force a directory item to be treated as an album.")
+    parser.add_option("--is-not-album", metavar="DIR-PATH", action="append", dest="not_albums", default=[],
+                      help="Force a directory item to not be treated as an album.")
     parser.add_option("-n", "--dry-run", action="store_true", default=False,
                       help="Do not delete or copy anything.")
     parser.add_option("--delete-in-dst-only", action="store_true", default=False,
@@ -130,15 +136,7 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
 def main():
     src_dir, dst_dir, options = parse_args()
     
-    
-    forced_albums = set([
-        "LocoRoco's Song -LocoRoco Original Soundtrack-",
-        "Symphonic Pink Floyd",
-        "The Hitchhiker's Guide To The Galaxy - Soundtrack",
-    ])
-    
-    scanner = rms.scanner.Scanner(forced_albums, ())
-    
+    scanner = rms.scanner.Scanner(options.ignore, options.forced_albums, options.not_albums)
     
     print 'Scanning source: %s' % src_dir
     src = scanner.scan(src_dir)
