@@ -12,7 +12,7 @@ import rms.files
 def parse_args():
     parser = OptionParser(usage="Usage: %prog [options] SOURCE DESTINATION TARGET_FREE",
                           description="""SOURCE and DESTINATION are directories.
-                              TARGET_FREE is the amount of space that will be kept
+                              TARGET_FREE is the minimum amount of space that will be kept
                               unused in the target device. It can be a percentage
                               ("50%", "0%", "25.7%", etc.) or a byte-size value ("1gb",
                               "2.5GiB", "10mB", etc.).""")
@@ -88,7 +88,7 @@ def process_media_in_dst_only(src, dst, dst_dir, must_delete):
 
 
 def process_kept_media(src, dst, keep_count):
-    src_kept = {}
+    src_kept = Media()
     dst_kept = Media()
     
     while len(dst_kept) < keep_count and len(dst) > 0:
@@ -101,10 +101,15 @@ def process_kept_media(src, dst, keep_count):
 
 def select_media(src, src_selected_size_target):
     src_selected = Media()
+    src_not_selected = Media()
     
-    while src_selected.size < src_selected_size_target and len(src) > 0:
+    while len(src) > 0:
         chosen = random.choice(src.keys())
-        src.move(chosen, src_selected)
+        
+        if src_selected.size + src[chosen].size <= src_selected_size_target:
+            src.move(chosen, src_selected)
+        else:
+            src.move(chosen, src_not_selected)
     
     return src_selected
 
