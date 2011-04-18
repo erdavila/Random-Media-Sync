@@ -1,5 +1,3 @@
 - Show estimated time while copying.
 
-- Make "--keep" optional. Default value: the same space currently occupied.
-
 - Make "--keep" accept bytesize parameter

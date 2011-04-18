@@ -2,6 +2,7 @@ from itertools import chain
 import os.path
 
 from rms.media import Media
+import rms.debug
 
 
 MEDIA_EXTS = (
@@ -36,13 +37,13 @@ class Scanner(object):
     def scan_dir(self, media_dir, dir_relpath, level):
         """Returns a generator of Media.Item objects"""
         if dir_relpath in self.ignore:
-            #print ">>> Ignoring:", dir_relpath
+            rms.debug.log("Ignoring directory:", dir_relpath)
             return ()
         
         if level < 2:
             # Root or artist dir
             if self.is_album(dir_relpath):
-                #print ">>> Forced album:", dir_relpath
+                rms.debug.log("Forced album:", dir_relpath)
                 return self.scan_album(media_dir, dir_relpath)
             else:
                 gens = self.scan_not_album(media_dir, dir_relpath, level)
@@ -50,7 +51,7 @@ class Scanner(object):
         else:
             # Album dir
             if self.is_not_album(dir_relpath):
-                #print ">>> Forced not-album:", dir_relpath
+                rms.debug.log("Forced not-album:", dir_relpath)
                 gens = self.scan_not_album(media_dir, dir_relpath, level)
                 return chain.from_iterable(gens)
             else:
@@ -59,7 +60,7 @@ class Scanner(object):
     def scan_file(self, media_dir, file_relpath):
         """Generator of Media.Item file objects."""
         if file_relpath in self.ignore:
-            #print ">>> Ignoring:", file_relpath
+            rms.debug.log("Ignoring file:", file_relpath)
             return
         
         _, ext = os.path.splitext(file_relpath)

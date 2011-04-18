@@ -1,86 +1,16 @@
 #!/usr/bin/env python
 import os
 import random
-from optparse import OptionParser
 
 from rms.media import Media
+import rms.debug
+import rms.files
+import rms.options
 import rms.scanner
 import rms.text
-import rms.files
 
 
-def parse_args():
-    import re
-    def clean(s):
-        return re.sub(r'\s+', ' ', s)
-    
-    
-    parser = OptionParser(usage="Usage: %prog [options] [[SOURCE] DESTINATION]")
-    parser.add_option("-s", "--source", dest="src_dir", default=None, metavar="SOURCE",
-                      help="The source media directory.")
-    parser.add_option("-d", "--dest", dest="dst_dir", default=None, metavar="DESTINATION",
-                      help="The destination media directory.")
-    parser.add_option("-f", "--free", dest="free", metavar="FREE", default=None,
-                      help=clean("""Minimum amount of space that will be let unused
-                          in the destination device. Can be a percentage ("50%",
-                          "0%", "25.7%", etc.) or a byte-size value ("1gb", "2.5GiB",
-                          "10mB", etc.). Default: the current free space."""))
-    parser.add_option("-k", "--keep", dest="keep", metavar="KEEP", default="0",
-                      help=clean("""Minimum number of items currently in DESTINATION
-                          that will be kept. Can be a percentage (see TARGET_FREE
-                          argument above) or an absolute number of items. Default: 0."""))
-    parser.add_option("--ignore", metavar="ITEM-PATH", action="append", dest="ignore", default=[],
-                      help="Ignore an item.")
-    parser.add_option("--is-album", metavar="DIR-PATH", action="append", dest="forced_albums", default=[],
-                      help="Force a directory item to be treated as an album.")
-    parser.add_option("--is-not-album", metavar="DIR-PATH", action="append", dest="not_albums", default=[],
-                      help="Force a directory item to not be treated as an album.")
-    parser.add_option("-n", "--dry-run", action="store_true", default=False,
-                      help="Do not delete or copy anything.")
-    parser.add_option("--delete-in-dst-only", action="store_true", default=False,
-                      help=clean("""Delete media found in the destination which are not
-                          in the source. ARE YOU SURE YOU WANT TO DO THIS?!"""))
-    (options, args) = parser.parse_args()
-    
-    if args:
-        options.dst_dir = args.pop(-1)
-    
-    if args:
-        options.src_dir = args.pop(-1)
-    
-    if args:
-        parser.error("Too many arguments")
-    
-    
-    if options.dst_dir is None:
-        parser.error("DESTINATION not specified")
-    
-    if options.src_dir is None:
-        parser.error("SOURCE not specified")
-    
-    
-    if options.free is None:
-        options.free_type = 'CURRENT'
-    else:
-        try:
-            options.free = rms.text.parse_percent(options.free)
-            options.free_type = 'PERCENT'
-        except ValueError:
-            options.free = rms.text.parse_bytesize(options.free)
-            options.free_type = 'BYTES'
-    
-    try:
-        options.keep = rms.text.parse_percent(options.keep)
-        options.keep_is_percent = True
-    except ValueError:
-        options.keep = int(options.keep)
-        options.keep_is_percent = False
-    
-    if options.dry_run:
-        def _do_nothing(*args): pass
-        rms.files.delete = rms.files.copy = _do_nothing
-    
-    return options
+#rms.debug.ENABLED = True
 
 
 def process_media_in_dst_only(src, dst, dst_dir, must_delete):
@@ -142,7 +72,7 @@ def delete_media(src_selected, dst, dst_dir):
     
     if dst_delete:
         print "Deleting %s" % rms.text.format_bytesize(dst_delete.size)
-        for num, item in enumerate(dst_delete.sorted(), 1):
+        for item in dst_delete.sorted():
             print 'Deleting: %s' % item
             rms.files.delete(dst_dir, item)
         print
@@ -162,7 +92,19 @@ def copy_media(src_selected, dst, src_dir, dst_dir):
 
 
 def main():
-    options = parse_args()
+    options = rms.options.get_options()
+    if rms.debug.ENABLED:
+        rms.debug.log('Final options:')
+        rms.debug.log(src_dir=options.src_dir)
+        rms.debug.log(dst_dir=options.dst_dir)
+        rms.debug.log(keep=options.keep, keep_is_percent=options.keep_is_percent)
+        rms.debug.log(free=options.free, free_type=options.free_type)
+        rms.debug.log(ignore=options.ignore)
+        rms.debug.log(forced_albums=options.forced_albums)
+        rms.debug.log(not_albums=options.not_albums)
+        rms.debug.log(dry_run=options.dry_run)
+        rms.debug.log(delete_in_dst_only=options.delete_in_dst_only)
+        rms.debug.log()
     
     scanner = rms.scanner.Scanner(options.ignore, options.forced_albums, options.not_albums)
     
