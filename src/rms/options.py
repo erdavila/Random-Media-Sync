@@ -18,6 +18,7 @@ def get_options():
         rms.debug.log(forced_albums=options.forced_albums)
         rms.debug.log(not_albums=options.not_albums)
         rms.debug.log(dry_run=options.dry_run)
+        rms.debug.log(mixed_mode=options.mixed_mode)
         rms.debug.log(delete_in_dst_only=options.delete_in_dst_only)
         rms.debug.log()
     
@@ -61,6 +62,9 @@ def parse_args():
                       help="Configuration file.")
     parser.add_option("-n", "--dry-run", action="store_true", default=False,
                       help="Do not delete or copy anything.")
+    parser.add_option("-m", "--mixed-mode", action="store_true", default=False,
+	                  help=clean("""Alternate working mode where files are not sorted
+	                      and deletion of files happens when needed."""))
     parser.add_option("--delete-in-dst-only", action="store_true", default=False,
                       help=clean("""Delete media found in the destination which are not
                           in the source. ARE YOU SURE YOU WANT TO DO THIS?!"""))
@@ -135,6 +139,8 @@ def process_config_file(options):
                 list_option(option, arg, 'not_albums')
             elif option == 'dry-run':
                 bool_option(option, arg, 'dry_run')
+            elif option == 'mixed-mode':
+                bool_option(option, arg, 'mixed_mode')
             elif option == 'delete-in-dst-only':
                 bool_option(option, arg, 'delete_in_dst_only')
             else:

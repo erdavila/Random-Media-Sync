@@ -1,5 +1,6 @@
 import os.path
 import shutil
+from collections import namedtuple
 
 import rms.scanner as scanner
 
@@ -46,3 +47,12 @@ def ignore_non_media(dirpath, contents):
         if os.path.isfile(full_path) and not scanner.is_media_ext(ext):
             ignored.append(item)
     return ignored
+
+
+DeviceData = namedtuple('DeviceData', 'total,free')
+
+def get_device_data(device_path):
+    vfsstat = os.statvfs(device_path)
+    total = vfsstat.f_bsize * vfsstat.f_blocks
+    free = vfsstat.f_bsize * vfsstat.f_bavail
+    return DeviceData(total=total, free=free)
