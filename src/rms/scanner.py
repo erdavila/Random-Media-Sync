@@ -12,9 +12,14 @@ MEDIA_EXTS = (
     '.wav',
     '.wma',
 )
-def is_media_ext(ext):
-    ext = ext.lower()
-    return ext in MEDIA_EXTS
+def is_media_file(filename):
+	assert '/' not in filename
+	if filename.lower() == 'folder.jpg':
+		return True
+	
+	_, ext = os.path.splitext(filename)
+	ext = ext.lower()
+	return ext in MEDIA_EXTS
 
 
 class Scanner(object):
@@ -63,9 +68,8 @@ class Scanner(object):
             rms.debug.log("Ignoring file:", file_relpath)
             return
         
-        _, ext = os.path.splitext(file_relpath)
-        
-        if is_media_ext(ext):
+        _, filename = os.path.split(file_relpath)
+        if is_media_file(filename):
             file_fullpath = os.path.join(media_dir, file_relpath)
             file_size = os.path.getsize(file_fullpath)
             yield Media.Item(type='FILE', relpath=file_relpath, size=file_size)
@@ -77,8 +81,8 @@ class Scanner(object):
         total_size = 0
         for (dir_fullpath, _, files) in os.walk(album_fullpath):
             for file in files:
-                _, ext = os.path.splitext(file)
-                if is_media_ext(ext):
+                _, filename = os.path.split(file)
+                if is_media_file(filename):
                     file_fullpath = os.path.join(dir_fullpath, file)
                     total_size += os.path.getsize(file_fullpath)
         
