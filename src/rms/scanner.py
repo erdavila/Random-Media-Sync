@@ -12,14 +12,18 @@ MEDIA_EXTS = (
     '.wav',
     '.wma',
 )
+
 def is_media_file(filename):
-	assert '/' not in filename
-	if filename.lower() == 'folder.jpg':
-		return True
-	
-	_, ext = os.path.splitext(filename)
-	ext = ext.lower()
-	return ext in MEDIA_EXTS
+    assert '/' not in filename
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    return ext in MEDIA_EXTS
+
+def is_album_media_file(filename):
+    if filename.lower() == 'folder.jpg':
+        return True
+    
+    return is_media_file(filename)
 
 
 class Scanner(object):
@@ -82,7 +86,7 @@ class Scanner(object):
         for (dir_fullpath, _, files) in os.walk(album_fullpath):
             for file in files:
                 _, filename = os.path.split(file)
-                if is_media_file(filename):
+                if is_album_media_file(filename):
                     file_fullpath = os.path.join(dir_fullpath, file)
                     total_size += os.path.getsize(file_fullpath)
         

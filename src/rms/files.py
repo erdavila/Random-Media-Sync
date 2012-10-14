@@ -43,7 +43,7 @@ def ignore_non_media(dirpath, contents):
     ignored = []
     for item in contents:
         full_path = os.path.join(dirpath, item)
-        if os.path.isfile(full_path) and not scanner.is_media_file(item):
+        if os.path.isfile(full_path) and not scanner.is_album_media_file(item):
             ignored.append(item)
     return ignored
 
